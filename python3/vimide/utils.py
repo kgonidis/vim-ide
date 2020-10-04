@@ -18,7 +18,6 @@ import logging
 import os
 import contextlib
 import vim
-# vim = None
 import json
 import functools
 import subprocess
