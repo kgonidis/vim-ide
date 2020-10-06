@@ -1,62 +1,19 @@
 
 import vim
-from vimide import utils
-from collections import namedtuple
+from vimide import (
+        utils,
+        defaults,
+        baseview)
 
-SIDEBAR_DEFAULTS = {
-    "layout": {
-        "location": "vertical topleft",
-        "vertical": True,
-        "size": 30
-    },
-    "plugins": [
-        {
-            'name': 'nerdtree',
-            'open_command': 'NERDTree',
-            'size': 50,
-            'opens_by_default': 'current'
-        },
-        {
-            'name': 'tagbar',
-            'open_command': 'execute "Tagbar" | wincmd j',
-            'size': 50,
-            'opens_by_default': 'belowright',
-        }
-    ]
+class CodeView(baseview.BaseView):
 
-}
+    def __init__(self, window):
+        super(CodeView,self).__init__(options={'hideable': False})
+        self[0] = baseview.LayoutWindow(
+                window, window.buffer, window.tabpage)
 
-BOTBAR_DEFAULTS = {
-    "layout": {
-        "location": "belowright",
-        "vertical": False,
-        "size": 20
-    },
-    "plugins": [
-        {
-            'name': 'terminal',
-            'open_command': 'terminal ++curwin',
-            'size': 50,
-            'opens_by_default': 'current'
-        }
-    ]
-}
-
-LayoutWindow = namedtuple('LayoutWindow', ['window', 'buffer', 'tabpage'])
-
-class BaseView(dict):
-    def __init__(self, options=None):
-        super(BaseView, self).__init__()
-        self._layout = options.get('layout') if options else None
-        self._plugins = options.get('plugins', []) if options else []
-        self._hidden = True
-        self._init_area()
-
+class BarView(baseview.BaseView):
     def _init_area(self):
-        def is_current():
-            location = self._layout.get('location', "")
-            return location in ["", "current"]
-
         command = self._layout.get('custom')
         if not command:
             location = self._layout.get("location", "current")
@@ -69,127 +26,131 @@ class BaseView(dict):
 
         dim = "height" if "vert" in location else "width"
         size = int(int(vim.eval(f"win{dim}(0)"))/len(self._plugins))
+        print(size)
 
-        for p in self._plugins:
+        for name,p in self._plugins.items():
+            opens = p.get('opens_by_default')
             command = p.get('open_command')
 
-            if command:
+            if opens and opens != 'current':
+                with utils.RestoreCurrentWindow():
+                    vim.command(command)
+                    buf = vim.current.buffer
+                    vim.command("quit")
+                pbuf = vim.current.buffer
+                vim.current.buffer = buf
+                vim.command(f":bd {pbuf.number}")
+
+            elif command:
+                print(command)
                 vim.command(command)
 
-            self[p['name']] = LayoutWindow(
+            self[name] = baseview.LayoutWindow(
                 vim.current.window,
                 vim.current.window.buffer,
                 vim.current.window.tabpage)
 
-        if len(self) > 1:
-            for v in self.values():
-                with utils.LetCurrentWindow(v.window):
-                    vim.command(f"{size}wincmd _")
-        self._hidden = False
-
-
-    def GoTo(self, name=None):
-        if name:
-            if name in self:
-                utils.JumpToWindow(self[name].window)
-                return True
-        elif len(self):
-            for v in self.values():
-                utils.JumpToWindow(v.window)
-                return True
-
-    def Hide(self):
-        for k in self.keys():
-            with utils.LetCurrentWindow(self[k].window):
-                vim.command("quit")
-        self._hidden = True
-
-    def Show(self):
-        def is_current():
-            location = self._layout.get('location', "")
-            return location in ["", "current"]
-
-        command = self._layout.get('custom')
-        if not command:
-            location = self._layout.get("location", "")
-            location = "" if location == "current" else location + " "
-
-            size = self._layout.get('size', 30)
-            command = f"{location}{size} new"
-
-        vim.command(command)
-
-        vert = "vert" in location
-        dim = "height" if is_current() or vert else "width"
-        size = int(int(vim.eval(f"win{dim}(0)"))/len(self._plugins))
-
-
-        for i,p in enumerate(self._plugins):
-            window = vim.current.window
-            vim.current.buffer = self[p['name']].buffer
-            self[p['name']] = LayoutWindow(
-                vim.current.window,
-                vim.current.window.buffer,
-                vim.current.window.tabpage)
-            if i < (len(self._plugins) -1):
-                vim.command("belowright new")
+            if name == 'terminal':
+                self[name].buffer.options['buflisted'] = False
 
         if len(self) > 1:
-            for v in self.values():
+            for _,v in self.items():
                 with utils.LetCurrentWindow(v.window):
                     vim.command(f"{size}wincmd _")
-        self._hidden = False
 
-
-class CodeView(BaseView):
-
-    def __init__(self, window):
-        super(CodeView,self).__init__()
-        self[0] = LayoutWindow(
-                window, window.buffer, window.tabpage)
-
-
-    def _init_area(self):
-        pass
+        super(BarView,self)._init_area()
 
 
 
 
 class Ide(dict):
     """docstring for Ide"""
+    def __init__(self):
+        super(Ide,self).__init__()
+        self._loading = False
 
     def SetupUI(self):
+        self._loading = True
         self["code"] = CodeView(vim.current.window)
-        self["sidebar"] = BaseView(SIDEBAR_DEFAULTS)
-        self["code"].GoTo()
-        self["botbar"] = BaseView(BOTBAR_DEFAULTS)
-        self["code"].GoTo()
+        for bar,layout in defaults.LAYOUT_DEFAULTS.items():
+            with utils.RestoreCurrentWindow():
+                self[bar] = BarView(options=layout)
+        self._loading = False
 
-        # for k,v in self.items():
-            # print()
-            # print(k)
-            # print()
-            # for kk,vv in v.items():
-                # print(kk,vv)
+        # vim.command(f":augroup VimIdeWinEnter")
+        # vim.command(":au!")
+        # vim.command(f":au WinEnter * py3 _vim_ide.OnWinEnter()")
+        # vim.command(":augroup END")
 
-    def Where(self,window=None):
+        # for lkey, layout in self.items():
+            # if lkey == "code":
+                # vim.command(f":augroup {lkey}")
+                # vim.command(":au!")
+                # for wkey,w in layout.items():
+                    # vim.command(f"au BufLeave {w.buffer.name} " +
+                        # f"py3 _vim_ide.OnBufLeave(\"{lkey}\", \"{wkey}\")")
+                # vim.command(":augroup END")
+            # else:
+                # vim.command(f":augroup {lkey}")
+                # vim.command(":au!")
+                # for wkey,w in layout.items():
+                    # vim.command(f"au BufLeave {w.buffer.name} " +
+                        # f"py3 _vim_ide.OnBufLeave(\"{lkey}\", \"{wkey}\")")
+                # vim.command(":augroup END")
+
+    def OnWinEnter(self):
+        bufs = []
+        for b in vim.buffers:
+            modtime = vim.eval(f"getbufinfo({b.number})")[0]['lastused']
+            bufs.append([modtime, b])
+        if len(bufs) <= 1:
+            return
+
+        last_buf = sorted(bufs, reverse=True, key=lambda k: k[0])[1]
+        thiskey, thiswin = self.FindWindow()
+        lastkey, lastwin = self.FindBuffer(last_buf)
+
+        if lastkey is not None and lastkey != thiskey:
+            self[lastkey].OnLayoutLeave()
+
+    def FindWindow(self,window=None):
         window = vim.current.window if not window else window
-        for k,v in self.items():
-            if window in [lw.window for _,lw in v.items()]:
-                vim.command(f"let g:return = \"{k}\"")
-                return k
+        for lkey,layout in self.items():
+            wkey = layout.GetWindowPlugin(window)
+            if wkey is not None:
+                vim.command(f"let g:return = \"{lkey},{wkey}\"")
+                return lkey, wkey
         vim.command(f"let g:return = -1")
-        return None
+        return None, None
+
+    def FindBuffer(self,buf=None):
+        buf = vim.current.buffer if not buf else buf
+        for lkey,layout in self.items():
+            wkey = layout.GetBufferPlugin(buf)
+            if wkey is not None:
+                vim.command(f"let g:return = \"{lkey},{wkey}\"")
+                return lkey, wkey
+        vim.command(f"let g:return = -1")
+        return None, None
 
     def GoToWindow(self, name):
-        for k,v in self.items():
-            if name in [p.get('name', '') for p in v._plugins]:
+        for _,v in self.items():
+            if name in v._plugins:
                 if v._hidden:
-                    v.Show()
+                    with utils.RestoreCurrentWindow():
+                        v.Show()
                 v.GoTo(name)
+                if name == 'tagbar':
+                    vim.command("let w:autoclose = 0")
                 break
         else:
             raise KeyError(f"{name} not in current window list")
+
+    def BufferClose(self, name):
+        for lkey, layout in self.items():
+            if name in layout:
+                vim.command(f"bd! {self[lkey][name].buffer.number}")
+                return
 
 
 
