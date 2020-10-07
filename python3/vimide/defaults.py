@@ -27,7 +27,7 @@ RIGHTBAR_DEFAULTS = {
     },
     "plugins": {
         "tagbar": {
-            'open_command': 'execute "Tagbar" | wincmd j',
+            'open_command': 'execute "Tagbar" | wincmd j | i',
             'goto_command': 'TagbarOpen',
             'size': 50,
             'opens_by_default': 'belowright',
@@ -77,5 +77,4 @@ LAYOUT_DEFAULTS = {
     "botbar": BOTBAR_DEFAULTS,
     "leftbar": LEFTBAR_DEFAULTS,
     "gitbar": GITBAR_DEFAULTS,
-    "rightbar": RIGHTBAR_DEFAULTS,
 }

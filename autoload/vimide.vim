@@ -5,6 +5,11 @@ _vim_ide = __import__('vimide', fromlist = ['ide']).ide.Ide()
 _vim_ide.SetupUI()
 EOF
 call airline#extensions#tabline#buflist#invalidate()
+augroup vimide#autoclose
+    au!
+    au WinLeave * py3 _vim_ide.OnWinLeave()
+    au BufEnter __Tagbar__* :let w:autoclose=0
+augroup END
 endfunction
 
 function vimide#where()
@@ -46,5 +51,10 @@ endfunction
 
 function vimide#autoload()
     let g:vimide_autoload = 1
+endfunction
+
+function vimide#debugpy()
+    py3 __import__("vimspector", fromlist=["developer"])
+        \.developer.SetUpDebugpy()
 endfunction
 

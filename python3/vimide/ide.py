@@ -68,6 +68,7 @@ class Ide(dict):
     def __init__(self):
         super(Ide,self).__init__()
         self._loading = False
+        self._prev_state = None
 
     def SetupUI(self):
         self._loading = True
@@ -77,41 +78,23 @@ class Ide(dict):
                 self[bar] = BarView(options=layout)
         self._loading = False
 
-        # vim.command(f":augroup VimIdeWinEnter")
-        # vim.command(":au!")
-        # vim.command(f":au WinEnter * py3 _vim_ide.OnWinEnter()")
-        # vim.command(":augroup END")
+    def IsLoading(self):
+        for _,l in self.items():
+            if l._loading:
+                return True
+        return self._loading
 
-        # for lkey, layout in self.items():
-            # if lkey == "code":
-                # vim.command(f":augroup {lkey}")
-                # vim.command(":au!")
-                # for wkey,w in layout.items():
-                    # vim.command(f"au BufLeave {w.buffer.name} " +
-                        # f"py3 _vim_ide.OnBufLeave(\"{lkey}\", \"{wkey}\")")
-                # vim.command(":augroup END")
-            # else:
-                # vim.command(f":augroup {lkey}")
-                # vim.command(":au!")
-                # for wkey,w in layout.items():
-                    # vim.command(f"au BufLeave {w.buffer.name} " +
-                        # f"py3 _vim_ide.OnBufLeave(\"{lkey}\", \"{wkey}\")")
-                # vim.command(":augroup END")
+    def OnWinLeave(self):
+        if not self.IsLoading():
+            lkey, wkey = self.FindWindow(vim.current.window)
+            if lkey is not None and self[lkey]._layout.get('autoclose', False):
+                self[lkey].Hide()
 
-    def OnWinEnter(self):
-        bufs = []
-        for b in vim.buffers:
-            modtime = vim.eval(f"getbufinfo({b.number})")[0]['lastused']
-            bufs.append([modtime, b])
-        if len(bufs) <= 1:
-            return
+        self._prev_state = baseview.LayoutWindow(
+                vim.current.window,
+                vim.current.buffer,
+                vim.current.window.tabpage)
 
-        last_buf = sorted(bufs, reverse=True, key=lambda k: k[0])[1]
-        thiskey, thiswin = self.FindWindow()
-        lastkey, lastwin = self.FindBuffer(last_buf)
-
-        if lastkey is not None and lastkey != thiskey:
-            self[lastkey].OnLayoutLeave()
 
     def FindWindow(self,window=None):
         window = vim.current.window if not window else window
@@ -140,8 +123,6 @@ class Ide(dict):
                     with utils.RestoreCurrentWindow():
                         v.Show()
                 v.GoTo(name)
-                if name == 'tagbar':
-                    vim.command("let w:autoclose = 0")
                 break
         else:
             raise KeyError(f"{name} not in current window list")
